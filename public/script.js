@@ -420,8 +420,74 @@ async function loadYoutube() {
   ytLoadBtn.disabled = false;
 }
 
-/* ── Konversi (server-side via FFmpeg) ── */
+/* ── Konversi (server-side via FFmpeg, async + polling) ── */
 convertBtn.addEventListener('click', startConvert);
+
+const POLL_INTERVAL_MS = 2000;
+const POLL_TIMEOUT_MS  = 5 * 60 * 1000; // 5 menit maksimum menunggu
+
+function pollJobStatus(jobId) {
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/status/${jobId}`);
+        const data = await res.json();
+
+        if (data.status === 'done') {
+          return resolve(data);
+        }
+        if (data.status === 'error' || data.ok === false) {
+          return reject(new Error(data.error || 'Konversi gagal di server.'));
+        }
+
+        // pending — update progress bar
+        const pct = typeof data.progress === 'number' ? data.progress : 0;
+        setProgress(10 + Math.round(pct * 0.85), `Memproses dengan FFmpeg… ${pct}%`);
+
+        if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+          return reject(new Error('Konversi memakan waktu terlalu lama. Coba dengan file yang lebih pendek atau durasi maks lebih kecil.'));
+        }
+
+        setTimeout(tick, POLL_INTERVAL_MS);
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    tick();
+  });
+}
+
+function renderConversionResult(data, baseName, speed, gainDb, maxDur) {
+  dlOgg.href = data.ogg.url; dlOgg.download = (baseName || 'hasil') + '_converted.ogg';
+  dlMp3.href = data.mp3.url; dlMp3.download = (baseName || 'hasil') + '_converted.mp3';
+
+  const outDurSec = data.durations.output;
+  const inDurSec  = data.durations.input;
+  const outDurMin = Math.floor(outDurSec / 60);
+  const outDurRemSec = Math.floor(outDurSec % 60);
+  const durLabel = outDurMin > 0
+    ? `${outDurMin} menit ${outDurRemSec} detik (${outDurSec.toFixed(1)}s)`
+    : `${outDurSec.toFixed(1)} detik`;
+
+  // Peringatan Roblox
+  const robloxWarnings = [];
+  if (data.ogg.size > 19.5 * 1024 * 1024) robloxWarnings.push('⚠ File OGG mendekati batas 20 MB Roblox');
+  if (outDurSec > 420) robloxWarnings.push(`⚠ Durasi ${durLabel} melebihi 7 menit — Roblox mungkin menolak`);
+
+  dlNote.innerHTML = `
+    <strong>Durasi output: ${durLabel}</strong><br>
+    Input: ${inDurSec.toFixed(1)}s → Output: ${outDurSec.toFixed(1)}s pada kecepatan ${speed}× (pitch tetap normal)<br>
+    Amplifikasi: ${gainDb} dB · Durasi maks: ${maxDur}s<br>
+    Codec: ${data.ogg.codec}
+    ${robloxWarnings.length ? '<br><span style="color:#b45309">' + robloxWarnings.join('<br>') + '</span>' : ''}
+  `;
+  dlSize.textContent = `Ukuran — OGG: ${formatBytes(data.ogg.size)} · MP3: ${formatBytes(data.mp3.size)}`;
+  downloadSection.classList.remove('hidden');
+  progressWrap.classList.add('hidden');
+}
 
 async function startConvert() {
   clearStatus();
@@ -457,8 +523,8 @@ async function startConvert() {
       throw new Error('Tidak ada sumber audio yang dipilih.');
     }
 
-    // Kirim ke backend FFmpeg
-    setProgress(25, `Mengunggah & memproses (kecepatan ${speed}×, gain ${gainDb}dB)…`);
+    // Upload ke backend — server langsung balas jobId tanpa menunggu FFmpeg
+    setProgress(10, `Mengunggah audio…`);
     const formData = new FormData();
     formData.append('file', blob, (baseName || 'audio') + '.mp3');
     formData.append('speed', String(speed));
@@ -466,39 +532,18 @@ async function startConvert() {
     formData.append('maxDur', String(maxDur));
 
     const res = await fetch('/api/convert', { method: 'POST', body: formData });
+    const startData = await res.json();
+    if (!res.ok || !startData.ok || !startData.jobId) {
+      throw new Error(startData.error || 'Gagal memulai konversi di server.');
+    }
 
-    setProgress(85, 'Menyelesaikan…');
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || 'Konversi gagal di server.');
+    setProgress(15, `Memproses dengan FFmpeg (kecepatan ${speed}×, gain ${gainDb}dB)…`);
+
+    // Poll status sampai selesai atau error
+    const result = await pollJobStatus(startData.jobId);
 
     setProgress(100, 'Selesai!');
-
-    dlOgg.href = data.ogg.url; dlOgg.download = (baseName || 'hasil') + '_converted.ogg';
-    dlMp3.href = data.mp3.url; dlMp3.download = (baseName || 'hasil') + '_converted.mp3';
-
-    const outDurSec = data.durations.output;
-    const inDurSec  = data.durations.input;
-    const outDurMin = Math.floor(outDurSec / 60);
-    const outDurRemSec = Math.floor(outDurSec % 60);
-    const durLabel = outDurMin > 0
-      ? `${outDurMin} menit ${outDurRemSec} detik (${outDurSec.toFixed(1)}s)`
-      : `${outDurSec.toFixed(1)} detik`;
-
-    // Peringatan Roblox
-    const robloxWarnings = [];
-    if (data.ogg.size > 19.5 * 1024 * 1024) robloxWarnings.push('⚠ File OGG mendekati batas 20 MB Roblox');
-    if (outDurSec > 420) robloxWarnings.push(`⚠ Durasi ${durLabel} melebihi 7 menit — Roblox mungkin menolak`);
-
-    dlNote.innerHTML = `
-      <strong>Durasi output: ${durLabel}</strong><br>
-      Input: ${inDurSec.toFixed(1)}s → Output: ${outDurSec.toFixed(1)}s pada kecepatan ${speed}× (pitch tetap normal)<br>
-      Amplifikasi: ${gainDb} dB · Durasi maks: ${maxDur}s<br>
-      Codec: ${data.ogg.codec}
-      ${robloxWarnings.length ? '<br><span style="color:#b45309">' + robloxWarnings.join('<br>') + '</span>' : ''}
-    `;
-    dlSize.textContent = `Ukuran — OGG: ${formatBytes(data.ogg.size)} · MP3: ${formatBytes(data.mp3.size)}`;
-    downloadSection.classList.remove('hidden');
-    progressWrap.classList.add('hidden');
+    renderConversionResult(result, baseName, speed, gainDb, maxDur);
 
   } catch (err) {
     progressWrap.classList.add('hidden');
