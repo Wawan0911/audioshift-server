@@ -18,14 +18,14 @@ function round6(v) {
 }
 
 const DEFAULT_SETTINGS = {
-  speed: 2.3,
+  speed: 2.5,   // ← diubah dari 2.3 ke 2.5
   gainDb: -4,
   maxDur: 400,
 };
 
 const SPEED_PRESETS = {
   lambat: 2.1,
-  default: 2.3,
+  default: 2.5, // ← diubah dari 2.3 ke 2.5
   cepat: 2.5,
   lebih_cepat: 2.7,
   ultra: 2.9,
