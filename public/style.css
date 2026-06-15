@@ -219,8 +219,20 @@ input[type=url]:focus, input[type=text]:focus {
 .setting-value { font-size: 1.3rem; font-weight: 800; color: var(--blue-700); line-height: 1.2; }
 .setting-note { font-size: 0.68rem; color: var(--indigo-400); margin-top: 0.25rem; font-weight: 500; }
 
+/* ── DEFAULT SPEED NOTE (keterangan di bawah kartu default) ── */
+.default-speed-note {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 0.65rem; margin-bottom: 0.1rem;
+  padding: 0.5rem 0.85rem;
+  background: var(--blue-50); border: 1px solid var(--blue-100);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem; color: var(--blue-700); font-weight: 500;
+}
+.default-speed-note svg { color: var(--blue-500); flex-shrink: 0; }
+.default-speed-note strong { font-weight: 700; color: var(--blue-700); }
+
 /* ── CUSTOM SETTINGS — NEW DESIGN ── */
-.custom-settings-stack { display: flex; flex-direction: column; gap: 14px; }
+.custom-settings-stack { display: flex; flex-direction: column; gap: 14px; margin-top: 0.85rem; }
 
 .custom-row {
   background: var(--gray-50);
@@ -407,6 +419,7 @@ footer { margin-top: 1.75rem; text-align: center; font-size: 0.73rem; color: var
   .download-row { flex-direction: column; }
   .custom-row-header { flex-wrap: wrap; }
 }
+
 /* ── PREVIEW SECTION ── */
 .waveform-canvas {
   width: 100%; height: 60px; border-radius: 8px;
