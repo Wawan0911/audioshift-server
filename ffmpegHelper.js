@@ -1,58 +1,21 @@
 /* =====================================================
    ffmpegHelper.js
    Logika konversi audio dengan FFmpeg:
-   - Kecepatan (atempo, pitch tetap normal — chaining untuk >2.0x atau <0.5x)
+   - Kecepatan + Pitch ikut naik/turun (efek tape/vinyl)
+     via asetrate=44100*speed + aresample=44100
    - Amplifikasi (volume filter, dB)
    - Durasi maks (trim dengan -t)
 ===================================================== */
 
 const ffmpeg = require('fluent-ffmpeg');
 
-/**
- * Memecah nilai speed menjadi rangkaian filter atempo yang valid.
- * Filter `atempo` FFmpeg hanya menerima rentang 0.5 - 2.0 per instance,
- * jadi nilai di luar rentang itu harus di-chain.
- *
- * Contoh:
- *   2.3  -> ["atempo=2.0", "atempo=1.15"]   (2.0 * 1.15 = 2.3)
- *   0.25 -> ["atempo=0.5",  "atempo=0.5"]   (0.5 * 0.5  = 0.25)
- *
- * @param {number} speed - faktor kecepatan (misal 2.3 untuk 2.3x)
- * @returns {string[]} array string filter atempo
- */
-function buildAtempoChain(speed) {
-  const MIN = 0.5;
-  const MAX = 2.0;
-  const stages = [];
-  let remaining = speed;
-
-  if (remaining <= 0) {
-    throw new Error('Nilai kecepatan harus lebih besar dari 0.');
-  }
-
-  // Pecah nilai > 2.0 menjadi beberapa tahap x2.0
-  while (remaining > MAX) {
-    stages.push(MAX);
-    remaining /= MAX;
-  }
-  // Pecah nilai < 0.5 menjadi beberapa tahap x0.5
-  while (remaining < MIN) {
-    stages.push(MIN);
-    remaining /= MIN;
-  }
-  // Sisa terakhir
-  stages.push(round6(remaining));
-
-  return stages.map(v => `atempo=${v}`);
-}
-
 function round6(v) {
   return Math.round(v * 1e6) / 1e6;
 }
 
 /**
- * Konfigurasi preset bawaan (sesuai default AudioShift).
- * speed   : faktor kecepatan (pitch tetap normal via atempo)
+ * Konfigurasi preset bawaan.
+ * speed   : faktor kecepatan (pitch IKUT naik/turun — efek tape)
  * gainDb  : penguatan/pelemahan volume dalam dB
  * maxDur  : durasi maksimum output dalam detik (trim jika lebih panjang)
  */
@@ -63,7 +26,7 @@ const DEFAULT_SETTINGS = {
 };
 
 /**
- * Preset kecepatan yang ditampilkan di UI (Lambat, Default, Cepat, dst.)
+ * Preset kecepatan yang ditampilkan di UI
  */
 const SPEED_PRESETS = {
   lambat: 2.1,
@@ -74,7 +37,7 @@ const SPEED_PRESETS = {
 };
 
 /**
- * Batas validasi input (mengikuti rentang slider di UI)
+ * Batas validasi input
  */
 const LIMITS = {
   speed: { min: 0.5, max: 4 },
@@ -116,33 +79,34 @@ function validateSettings(opts = {}) {
 }
 
 /**
- * Membangun filter audio FFmpeg lengkap: asetrate + atempo (speed) + volume (gain).
+ * Membangun filter audio FFmpeg untuk efek tape/vinyl:
+ * pitch IKUT naik/turun sesuai kecepatan.
  *
- * CATATAN PENTING — meniru perilaku cenzstudio:
- * Filter dimulai dengan `asetrate=44100` SEBELUM `atempo`. Untuk file
- * dengan sample rate asli BUKAN 44100Hz (misal 48000Hz, umum untuk
- * audio dari YouTube/MP3 modern), `asetrate=44100` membuat decoder
- * memutar data sample pada rate 44100 (lebih rendah dari aslinya),
- * sehingga audio terdengar SEDIKIT LEBIH CEPAT & pitch turun
- * (~1.47 semitone untuk source 48kHz) SEBELUM atempo diterapkan.
+ * Cara kerja:
+ *   1. `asetrate=N` — mengubah sample rate yang dilaporkan ke decoder
+ *      tanpa mengubah data sample. Jika N > rate asli, audio dimainkan
+ *      lebih cepat DAN pitch naik (persis seperti memutar kaset lebih cepat).
+ *   2. `aresample=44100` — resample output ke 44100Hz agar codec
+ *      (libvorbis / libmp3lame) mendapat sample rate standar.
+ *   3. `volume=XdB` — amplifikasi akhir.
  *
- * Hasil akhir: speed efektif ≈ speed_input * (sample_rate_asli / 44100).
- * Contoh terverifikasi: input 48kHz, speed=2.3 -> speed efektif ≈ 2.113x
- * (253.56s -> ~119.97s), match dengan output cenzstudio.
+ * Rumus: asetrate = 44100 * speed
+ *   speed=2.3  → asetrate=101430  → 2.3× lebih cepat, pitch naik ~1.2 oktaf
+ *   speed=0.5  → asetrate=22050   → 0.5× lebih lambat, pitch turun ~1 oktaf
  *
- * Untuk input yang SUDAH 44100Hz, asetrate=44100 tidak mengubah apapun
- * (speed efektif = speed_input persis, pitch tetap normal).
- *
- * Ini SENGAJA dipertahankan agar hasil identik dengan cenzstudio,
- * meskipun untuk source non-44.1kHz bukan "pitch tetap normal murni".
+ * TIDAK menggunakan atempo, sehingga TIDAK ada pemisahan pitch/tempo.
  *
  * @param {number} speed
  * @param {number} gainDb
- * @returns {string} filter string siap pakai untuk -filter:a / .audioFilters
+ * @returns {string} filter string siap pakai
  */
 function buildAudioFilter(speed, gainDb) {
-  const atempoChain = buildAtempoChain(speed);
-  const filters = ['asetrate=44100', ...atempoChain, `volume=${gainDb}dB`];
+  const targetRate = round6(44100 * speed);
+  const filters = [
+    `asetrate=${targetRate}`,
+    'aresample=44100',
+    `volume=${gainDb}dB`,
+  ];
   return filters.join(',');
 }
 
@@ -150,7 +114,7 @@ function buildAudioFilter(speed, gainDb) {
  * Menjalankan konversi audio dengan FFmpeg.
  *
  * @param {string} inputPath  - path file input
- * @param {string} outputPath - path file output (ekstensi menentukan format: .ogg / .mp3)
+ * @param {string} outputPath - path file output (.ogg / .mp3)
  * @param {object} settings   - { speed, gainDb, maxDur } (sudah divalidasi)
  * @param {function} onProgress - callback opsional (percent: number) => void
  * @returns {Promise<void>}
@@ -163,13 +127,11 @@ function convertAudio(inputPath, outputPath, settings, onProgress) {
   return new Promise((resolve, reject) => {
     let command = ffmpeg(inputPath)
       .audioFilters(audioFilter.split(','))
-      // Durasi maks dihitung pada OUTPUT (setelah speed-up).
-      // FFmpeg -t memotong stream output, jadi diterapkan setelah filter atempo.
       .outputOptions(['-t', String(maxDur)]);
 
     if (ext === 'ogg') {
       command = command
-        .audioCodec('libvorbis')   // OGG Vorbis — kompatibel dengan Roblox
+        .audioCodec('libvorbis')
         .audioChannels(2)
         .audioFrequency(44100)
         .audioBitrate('192k')
@@ -223,7 +185,6 @@ function getDuration(filePath) {
 }
 
 module.exports = {
-  buildAtempoChain,
   buildAudioFilter,
   convertAudio,
   getDuration,
