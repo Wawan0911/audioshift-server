@@ -116,14 +116,33 @@ function validateSettings(opts = {}) {
 }
 
 /**
- * Membangun filter audio FFmpeg lengkap: atempo (speed, pitch tetap) + volume (gain).
+ * Membangun filter audio FFmpeg lengkap: asetrate + atempo (speed) + volume (gain).
+ *
+ * CATATAN PENTING — meniru perilaku cenzstudio:
+ * Filter dimulai dengan `asetrate=44100` SEBELUM `atempo`. Untuk file
+ * dengan sample rate asli BUKAN 44100Hz (misal 48000Hz, umum untuk
+ * audio dari YouTube/MP3 modern), `asetrate=44100` membuat decoder
+ * memutar data sample pada rate 44100 (lebih rendah dari aslinya),
+ * sehingga audio terdengar SEDIKIT LEBIH CEPAT & pitch turun
+ * (~1.47 semitone untuk source 48kHz) SEBELUM atempo diterapkan.
+ *
+ * Hasil akhir: speed efektif ≈ speed_input * (sample_rate_asli / 44100).
+ * Contoh terverifikasi: input 48kHz, speed=2.3 -> speed efektif ≈ 2.113x
+ * (253.56s -> ~119.97s), match dengan output cenzstudio.
+ *
+ * Untuk input yang SUDAH 44100Hz, asetrate=44100 tidak mengubah apapun
+ * (speed efektif = speed_input persis, pitch tetap normal).
+ *
+ * Ini SENGAJA dipertahankan agar hasil identik dengan cenzstudio,
+ * meskipun untuk source non-44.1kHz bukan "pitch tetap normal murni".
+ *
  * @param {number} speed
  * @param {number} gainDb
  * @returns {string} filter string siap pakai untuk -filter:a / .audioFilters
  */
 function buildAudioFilter(speed, gainDb) {
   const atempoChain = buildAtempoChain(speed);
-  const filters = [...atempoChain, `volume=${gainDb}dB`];
+  const filters = ['asetrate=44100', ...atempoChain, `volume=${gainDb}dB`];
   return filters.join(',');
 }
 
