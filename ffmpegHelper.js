@@ -168,12 +168,12 @@ function convertAudio(inputPath, outputPath, settings, onProgress) {
       .outputOptions(['-t', String(maxDur)]);
 
     if (ext === 'ogg') {
-  command = command
-    .audioCodec('libvorbis')
-    .audioChannels(2)
-    .audioFrequency(44100)
-    .outputOptions(['-q:a', '7'])   // ← quality mode, ~220-250kbps, jauh lebih baik
-    .format('ogg');
+      command = command
+        .audioCodec('libvorbis')   // OGG Vorbis — kompatibel dengan Roblox
+        .audioChannels(2)
+        .audioFrequency(44100)
+        .audioBitrate('192k')
+        .format('ogg');
     } else if (ext === 'mp3') {
       command = command
         .audioCodec('libmp3lame')
