@@ -104,7 +104,7 @@
       <div id="defaultSettings" class="settings-grid">
         <div class="setting-card locked">
           <div class="setting-label">Kecepatan</div>
-          <div class="setting-value">2.3×</div>
+          <div class="setting-value">2.5×</div>  <!-- ← diubah dari 2.3× ke 2.5× -->
           <div class="setting-note">Terkunci</div>
         </div>
         <div class="setting-card locked">
@@ -119,6 +119,12 @@
         </div>
       </div>
 
+      <!-- ← KETERANGAN BARU di bawah kartu default -->
+      <div id="defaultSpeedNote" class="default-speed-note">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Speed Normal (di game): <strong>0.43 – 0.45</strong>
+      </div>
+
       <!-- CUSTOM -->
       <div id="customSettings" class="custom-settings-stack hidden">
 
@@ -130,20 +136,20 @@
             <span class="custom-row-label">Kecepatan</span>
             <div class="custom-num-wrap">
               <button class="num-step" id="stepSpeedDown" aria-label="Kurangi kecepatan">−</button>
-              <input type="number" id="numSpeed" class="num-input" min="0.5" max="4" step="0.1" value="2.1">
+              <input type="number" id="numSpeed" class="num-input" min="0.5" max="4" step="0.1" value="2.5">  <!-- ← diubah value dari 2.1 ke 2.5 -->
               <span class="num-unit">×</span>
               <button class="num-step" id="stepSpeedUp" aria-label="Tambah kecepatan">+</button>
             </div>
           </div>
           <div class="preset-row">
-            <button class="preset-pill active" data-preset-speed="2.1">Lambat <span>2.1x</span></button>
-            <button class="preset-pill" data-preset-speed="2.3">Default <span>2.3x</span></button>
-            <button class="preset-pill" data-preset-speed="2.5">Cepat <span>2.5x</span></button>
+            <button class="preset-pill" data-preset-speed="2.1">Lambat <span>2.1x</span></button>
+            <button class="preset-pill" data-preset-speed="2.3">Default lama <span>2.3x</span></button>
+            <button class="preset-pill active" data-preset-speed="2.5">Cepat <span>2.5x</span></button>
             <button class="preset-pill" data-preset-speed="2.7">Lebih Cepat <span>2.7x</span></button>
             <button class="preset-pill" data-preset-speed="2.9">Ultra <span>2.9x</span></button>
           </div>
           <div class="slider-track-wrap">
-            <input type="range" id="slSpeed" min="0.5" max="4" step="0.1" value="2.1">
+            <input type="range" id="slSpeed" min="0.5" max="4" step="0.1" value="2.5">  <!-- ← diubah value dari 2.1 ke 2.5 -->
             <div class="range-limits"><span>0.5×</span><span>4×</span></div>
           </div>
         </div>
