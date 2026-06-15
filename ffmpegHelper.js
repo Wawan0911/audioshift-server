@@ -5,7 +5,10 @@
      via asetrate=44100*speed + aresample=44100
    - Amplifikasi (volume filter, dB)
    - Durasi maks (trim dengan -t)
-   - Metadata dihapus (-map_metadata -1) agar tidak ditolak Roblox
+   - Metadata dihapus total agar tidak ditolak Roblox:
+     -map_metadata -1 + eksplisit kosongkan tiap field
+     (karena -map_metadata -1 saja tidak cukup untuk
+      membersihkan Vorbis Comment block di dalam OGG)
 ===================================================== */
 
 const ffmpeg = require('fluent-ffmpeg');
@@ -14,21 +17,12 @@ function round6(v) {
   return Math.round(v * 1e6) / 1e6;
 }
 
-/**
- * Konfigurasi preset bawaan.
- * speed   : faktor kecepatan (pitch IKUT naik/turun — efek tape)
- * gainDb  : penguatan/pelemahan volume dalam dB
- * maxDur  : durasi maksimum output dalam detik (trim jika lebih panjang)
- */
 const DEFAULT_SETTINGS = {
   speed: 2.3,
   gainDb: -4,
   maxDur: 400,
 };
 
-/**
- * Preset kecepatan yang ditampilkan di UI
- */
 const SPEED_PRESETS = {
   lambat: 2.1,
   default: 2.3,
@@ -37,9 +31,6 @@ const SPEED_PRESETS = {
   ultra: 2.9,
 };
 
-/**
- * Batas validasi input
- */
 const LIMITS = {
   speed: { min: 0.5, max: 4 },
   gainDb: { min: -20, max: 6 },
@@ -50,11 +41,6 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
-/**
- * Validasi & normalisasi parameter dari request.
- * @param {object} opts - { speed, gainDb, maxDur }
- * @returns {object} parameter yang sudah divalidasi
- */
 function validateSettings(opts = {}) {
   const speed = clamp(
     parseFloat(opts.speed ?? DEFAULT_SETTINGS.speed),
@@ -79,26 +65,6 @@ function validateSettings(opts = {}) {
   return { speed, gainDb, maxDur };
 }
 
-/**
- * Membangun filter audio FFmpeg untuk efek tape/vinyl:
- * pitch IKUT naik/turun sesuai kecepatan.
- *
- * Cara kerja:
- *   1. `asetrate=N` — mengubah sample rate yang dilaporkan ke decoder
- *      tanpa mengubah data sample. Jika N > rate asli, audio dimainkan
- *      lebih cepat DAN pitch naik (persis seperti memutar kaset lebih cepat).
- *   2. `aresample=44100` — resample output ke 44100Hz agar codec
- *      (libvorbis / libmp3lame) mendapat sample rate standar.
- *   3. `volume=XdB` — amplifikasi akhir.
- *
- * Rumus: asetrate = 44100 * speed
- *   speed=2.3  → asetrate=101430  → 2.3× lebih cepat, pitch naik ~1.2 oktaf
- *   speed=0.5  → asetrate=22050   → 0.5× lebih lambat, pitch turun ~1 oktaf
- *
- * @param {number} speed
- * @param {number} gainDb
- * @returns {string} filter string siap pakai
- */
 function buildAudioFilter(speed, gainDb) {
   const targetRate = round6(44100 * speed);
   const filters = [
@@ -109,15 +75,6 @@ function buildAudioFilter(speed, gainDb) {
   return filters.join(',');
 }
 
-/**
- * Menjalankan konversi audio dengan FFmpeg.
- *
- * @param {string} inputPath  - path file input
- * @param {string} outputPath - path file output (.ogg / .mp3)
- * @param {object} settings   - { speed, gainDb, maxDur } (sudah divalidasi)
- * @param {function} onProgress - callback opsional (percent: number) => void
- * @returns {Promise<void>}
- */
 function convertAudio(inputPath, outputPath, settings, onProgress) {
   const { speed, gainDb, maxDur } = settings;
   const audioFilter = buildAudioFilter(speed, gainDb);
@@ -128,12 +85,26 @@ function convertAudio(inputPath, outputPath, settings, onProgress) {
       .audioFilters(audioFilter.split(','))
       .outputOptions([
         '-t', String(maxDur),
-        '-map_metadata', '-1',  // Hapus semua metadata agar tidak ditolak Roblox
+
+        // Hapus metadata: -map_metadata -1 saja tidak cukup untuk OGG
+        // karena tag artist/title tertanam di Vorbis Comment block.
+        // Solusi: kombinasi -map_metadata -1 + eksplisit kosongkan tiap field.
+        '-map_metadata', '-1',
+        '-metadata', 'title=',
+        '-metadata', 'artist=',
+        '-metadata', 'album=',
+        '-metadata', 'comment=',
+        '-metadata', 'genre=',
+        '-metadata', 'date=',
+        '-metadata', 'track=',
+        '-metadata', 'composer=',
+        '-metadata', 'copyright=',
+        '-metadata', 'description=',
       ]);
 
     if (ext === 'ogg') {
       command = command
-        .audioCodec('libvorbis')   // OGG Vorbis — kompatibel dengan Roblox
+        .audioCodec('libvorbis')
         .audioChannels(2)
         .audioFrequency(44100)
         .audioBitrate('192k')
@@ -168,11 +139,6 @@ function convertAudio(inputPath, outputPath, settings, onProgress) {
   });
 }
 
-/**
- * Mengambil durasi audio (dalam detik) menggunakan ffprobe.
- * @param {string} filePath
- * @returns {Promise<number>}
- */
 function getDuration(filePath) {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(filePath, (err, metadata) => {
