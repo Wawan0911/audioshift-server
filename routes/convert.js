@@ -82,10 +82,12 @@ router.post('/convert', upload.single('file'), async (req, res) => {
     const oggPath = path.join(OUTPUT_DIR, `${jobId}.ogg`);
     const mp3Path = path.join(OUTPUT_DIR, `${jobId}.mp3`);
 
-    // Konversi ke OGG Vorbis (utama, untuk Roblox)
-    await convertAudio(inputPath, oggPath, settings);
-    // Konversi ke MP3 (alternatif unduhan)
-    await convertAudio(inputPath, mp3Path, settings);
+    // Konversi ke OGG Vorbis (utama, untuk Roblox) & MP3 (alternatif) secara PARALEL
+    // untuk mengurangi total waktu proses ~50% (penting untuk platform dengan timeout pendek seperti Back4App)
+    await Promise.all([
+      convertAudio(inputPath, oggPath, settings),
+      convertAudio(inputPath, mp3Path, settings),
+    ]);
 
     const oggStat = fs.statSync(oggPath);
     const mp3Stat = fs.statSync(mp3Path);
