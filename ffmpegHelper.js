@@ -5,6 +5,7 @@
      via asetrate=44100*speed + aresample=44100
    - Amplifikasi (volume filter, dB)
    - Durasi maks (trim dengan -t)
+   - Metadata dihapus (-map_metadata -1) agar tidak ditolak Roblox
 ===================================================== */
 
 const ffmpeg = require('fluent-ffmpeg');
@@ -94,8 +95,6 @@ function validateSettings(opts = {}) {
  *   speed=2.3  → asetrate=101430  → 2.3× lebih cepat, pitch naik ~1.2 oktaf
  *   speed=0.5  → asetrate=22050   → 0.5× lebih lambat, pitch turun ~1 oktaf
  *
- * TIDAK menggunakan atempo, sehingga TIDAK ada pemisahan pitch/tempo.
- *
  * @param {number} speed
  * @param {number} gainDb
  * @returns {string} filter string siap pakai
@@ -127,11 +126,14 @@ function convertAudio(inputPath, outputPath, settings, onProgress) {
   return new Promise((resolve, reject) => {
     let command = ffmpeg(inputPath)
       .audioFilters(audioFilter.split(','))
-      .outputOptions(['-t', String(maxDur)]);
+      .outputOptions([
+        '-t', String(maxDur),
+        '-map_metadata', '-1',  // Hapus semua metadata agar tidak ditolak Roblox
+      ]);
 
     if (ext === 'ogg') {
       command = command
-        .audioCodec('libvorbis')
+        .audioCodec('libvorbis')   // OGG Vorbis — kompatibel dengan Roblox
         .audioChannels(2)
         .audioFrequency(44100)
         .audioBitrate('192k')
