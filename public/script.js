@@ -360,12 +360,7 @@ async function tryCobaltInstance(baseUrl, videoId) {
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-   body: JSON.stringify({ 
-  url: `https://www.youtube.com/watch?v=${videoId}`, 
-  downloadMode: 'audio', 
-  audioFormat: 'best', 
-  audioBitrate: '320'   // ← maksimal
-}),
+    body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, downloadMode: 'audio', audioFormat: 'best', audioBitrate: '128' }),
     signal: AbortSignal.timeout(12000)
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
